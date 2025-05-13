@@ -1,0 +1,83 @@
+/* Import Bootstrap CSS */
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+:root {
+  --bs-primary: #0d6efd;
+  --bs-secondary: #6c757d;
+  --bs-success: #198754;
+  --bs-info: #0dcaf0;
+  --bs-warning: #ffc107;
+  --bs-danger: #dc3545;
+  --bs-light: #f8f9fa;
+  --bs-dark: #212529;
+}
+
+body {
+  background-color: var(--bs-light);
+  font-family: var(--bs-font-sans-serif);
+}
+
+/* Custom Animations */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Card Hover Effects */
+.card {
+  transition: all 0.3s ease;
+  margin-bottom: 1.5rem;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom Button Styles */
+.btn {
+  transition: all 0.3s ease;
+}
+
+/* Custom Formatting for Table */
+.table th {
+  cursor: pointer;
+}
+
+.table th:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Custom Badge Colors */
+.badge-grade-a {
+  background-color: var(--bs-success);
+  color: white;
+}
+
+.badge-grade-b {
+  background-color: var(--bs-primary);
+  color: white;
+}
+
+.badge-grade-c {
+  background-color: var(--bs-info);
+  color: white;
+}
+
+.badge-grade-d {
+  background-color: var(--bs-warning);
+  color: black;
+}
+
+.badge-grade-f {
+  background-color: var(--bs-danger);
+  color: white;
+}
