@@ -35,7 +35,8 @@ export class GPACalculator {
     // Filter out courses with special grades (those with GPA of -1)
     // Except for RT grades that also have a passing numeric score
     // Also exclude courses with both RT and MT/DT grades
-    const validCourses = courses.filter(course => {
+   
+    let validCourses = courses.filter(course => {
       // Exclude RT courses that also have MT or DT grades
       if (course.isRtWithSpecialGrade) {
         return false;
@@ -45,6 +46,21 @@ export class GPACalculator {
       return course.gpa !== -1 || course.isRtWithPassingGrade === true;
     });
     
+    // if one course has more than two grades, choose the highest grade
+    const classifiedCourses: Course[] = [];
+    validCourses.forEach(course => {
+      const existingCourse = classifiedCourses.find(c => c.code === course.code);
+      if (existingCourse) {
+        // if the course has a higher gpa, replace the existing course
+        if (course.gpa > existingCourse.gpa) {
+          classifiedCourses.splice(classifiedCourses.indexOf(existingCourse), 1);
+          classifiedCourses.push(course);
+        } // if the course has a lower gpa, do nothing
+      } else {
+        classifiedCourses.push(course);
+      }
+    });
+    validCourses = classifiedCourses;
     if (validCourses.length === 0) {
       return 0;
     }
