@@ -6,6 +6,7 @@ interface GPAToolsProps {
   onCalculateGPA: () => void;
   onCalculateRequiredGPA: (targetGPA: number) => number;
   onSuggestCourses: (numSuggestions: number) => void;
+  onImproveGrades?: () => void; // New prop for grade improvement
   coursesHtml: string;
   totalCreditsCDDT: number;
 }
@@ -14,6 +15,7 @@ export default function GPATools({
   onCalculateGPA,
   onCalculateRequiredGPA,
   onSuggestCourses,
+  onImproveGrades,
   coursesHtml,
   totalCreditsCDDT
 }: GPAToolsProps) {
@@ -38,7 +40,7 @@ export default function GPATools({
       </div>
       <div className="card-body">
         <div className="row g-3">
-          <div className="col-md-4">
+          <div className="col-md-3">
             <button
               onClick={onCalculateGPA}
               className="btn btn-primary w-100"
@@ -48,7 +50,17 @@ export default function GPATools({
             </button>
           </div>
           
-          <div className="col-md-4">
+          <div className="col-md-3">
+            <button
+              onClick={onImproveGrades}
+              className="btn btn-success w-100"
+            >
+              <i className="fas fa-chart-line me-2"></i>
+              Improve Grades
+            </button>
+          </div>
+          
+          <div className="col-md-3">
             <form onSubmit={handleCalculateRequiredGPA}>
               <div className="mb-2">
                 <label htmlFor="target_gpa" className="form-label">
@@ -74,7 +86,7 @@ export default function GPATools({
             </form>
           </div>
           
-          <div className="col-md-4">
+          <div className="col-md-3">
             <form onSubmit={handleSuggestCourses}>
               <div className="mb-2">
                 <label htmlFor="num_suggestions" className="form-label">

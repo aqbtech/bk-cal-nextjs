@@ -4,20 +4,22 @@ import { useState } from 'react';
 
 interface InputFormProps {
   onSubmit: (coursesData: string, totalCreditsCDDT: number, format: string) => void;
+  isLoading?: boolean;
 }
 
 // Input format options
 const INPUT_FORMATS = [
   { id: 'html', label: 'HTML (BK Portal)', description: 'Copy-paste HTML from BK Portal' },
+  { id: 'plainstring', label: 'Plain String', description: 'Paste plain string data' },
   // Future formats can be added here
   // { id: 'json', label: 'JSON Format', description: 'Paste JSON data' },
   // { id: 'csv', label: 'CSV Format', description: 'Paste CSV data' },
 ];
 
-export default function InputForm({ onSubmit }: InputFormProps) {
+export default function InputForm({ onSubmit, isLoading = false }: InputFormProps) {
   const [coursesData, setCoursesData] = useState<string>('');
   const [totalCreditsCDDT, setTotalCreditsCDDT] = useState<string>('');
-  const [inputFormat, setInputFormat] = useState<string>('html');
+  const [inputFormat, setInputFormat] = useState<string>('plainstring');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,9 +80,19 @@ export default function InputForm({ onSubmit }: InputFormProps) {
           <button
             type="submit"
             className="btn btn-primary w-100 d-flex align-items-center justify-content-center"
+            disabled={isLoading}
           >
-            <i className="fas fa-calculator me-2"></i>
-            Calculate
+            {isLoading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Processing...
+              </>
+            ) : (
+              <>
+                <i className="fas fa-calculator me-2"></i>
+                Calculate
+              </>
+            )}
           </button>
         </form>
       </div>

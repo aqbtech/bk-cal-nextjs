@@ -1,4 +1,11 @@
-import { RawCourseData, extractCourseData } from './htmlParser';
+import { HTMLParser, RawCourseData } from './htmlParser';
+import { PlainStringParser } from './plainStringParser';
+
+
+export interface ParseCourseInput {
+  extractCourseData: (content: string) => RawCourseData[];
+}
+
 
 export type Course = {
   code: string;
@@ -31,10 +38,6 @@ export class GPACalculator {
     if (!courses || courses.length === 0) {
       return 0;
     }
-
-    // Filter out courses with special grades (those with GPA of -1)
-    // Except for RT grades that also have a passing numeric score
-    // Also exclude courses with both RT and MT/DT grades
    
     let validCourses = courses.filter(course => {
       // Exclude RT courses that also have MT or DT grades
@@ -45,7 +48,8 @@ export class GPACalculator {
       // Include courses with normal grades or RT courses with passing grades
       return course.gpa !== -1 || course.isRtWithPassingGrade === true;
     });
-    
+
+    console.log("valid course",validCourses);
     // if one course has more than two grades, choose the highest grade
     const classifiedCourses: Course[] = [];
     validCourses.forEach(course => {
@@ -60,10 +64,13 @@ export class GPACalculator {
         classifiedCourses.push(course);
       }
     });
+    console.log("classified course",classifiedCourses); 
     validCourses = classifiedCourses;
     if (validCourses.length === 0) {
       return 0;
     }
+
+
 
     const totalCredits = validCourses.reduce((sum, course) => sum + course.credits, 0);
     const weightedGPA = validCourses.reduce((sum, course) => {
@@ -135,6 +142,7 @@ export class GPACalculator {
     }
     
     // Normal numeric score handling
+    if (score >= 9.5) return 'A+';
     if (score >= 8.5) return 'A';
     if (score >= 8.0) return 'B+';
     if (score >= 7.0) return 'B';
@@ -150,11 +158,11 @@ export class GPACalculator {
    * Special cases:
    * - 'MT': Miễn thi (Exam Exemption) - Not counted in GPA
    * - 'RT': Rút học phần (Course Withdrawal) - Not counted in GPA
-   * - 'DT': Điểm tạm (Temporary Grade) - Not counted in GPA
+   * - 'DT': Điểm đạt (passing Grade) - Not counted in GPA
    */
   static getGPA(letterGrade: string): number {
     switch (letterGrade) {
-      case 'A+': 
+      case 'A+': return 4.0;
       case 'A': return 4.0;
       case 'B+': return 3.5;
       case 'B': return 3.0;
@@ -164,12 +172,13 @@ export class GPACalculator {
       case 'D': return 1.0;
       case 'MT': // Miễn thi (Exam Exemption)
       case 'RT': // Rút học phần (Course Withdrawal)
-      case 'DT': // Điểm tạm (Temporary Grade)
+      case 'DT': // Điểm đạt (passing Grade)
         return -1; // Special marker for grades not counted in GPA
       case 'F':
       default: return 0.0;
     }
   }
+
 
   /**
    * Parse HTML input and extract course data
@@ -177,13 +186,35 @@ export class GPACalculator {
    * 1. For courses with 'RT' and a passing numeric score, use the numeric score
    * 2. For other special grades (MT, DT), don't count them in GPA
    */
-  static parseCourseInput(htmlContent: string): Course[] {
+  static parseCourseInput(htmlContent: string, format: string): Course[] {
     // Extract raw course data using htmlParser
-    const rawCourses = extractCourseData(htmlContent);
+    
+    let parser;
+    switch (format) {
+      case 'html':
+        parser = new HTMLParser();
+        break;
+      case 'plainstring':
+        parser = new PlainStringParser();
+        break;
+    
+      default:
+        console.error('Invalid format: ' + format);
+        return [];
+    }
+
+
+    const rawCourses = parser!.extractCourseData(htmlContent);
     if (!rawCourses || rawCourses.length === 0) {
       return [];
     }
 
+    const courses = this.filterCourses(rawCourses);
+    console.log(courses);
+    return courses;
+  }
+
+  static filterCourses(rawCourses: RawCourseData[]): Course[] {
     // Process raw courses and check for special cases
     const groupedCourses = new Map<string, RawCourseData[]>();
     
@@ -211,6 +242,9 @@ export class GPACalculator {
       const passingCourse = rawCoursesGroup.find(c => 
         typeof c.score === 'number' && this.isPassingGrade(c.score)
       );
+
+      
+
       
       // Process each course
       rawCoursesGroup.forEach(rawCourse => {
@@ -234,10 +268,12 @@ export class GPACalculator {
           isRtWithPassingGrade = true;
           finalScore = passingCourse.score;
         }
+
         
         const letterGrade = this.getLetterGrade(finalScore);
         const gpa = this.getGPA(letterGrade);
-        
+
+ 
         courses.push({
           code: rawCourse.code,
           name: rawCourse.name,
@@ -249,10 +285,25 @@ export class GPACalculator {
           isRtWithSpecialGrade // New flag for RT courses with MT or DT
         });
       });
+      
+      
     });
-
-    return courses;
-  }
+    let classifiedCourses: Course[] = [];
+    // if one course has more than two grades, choose the highest grade
+    courses.forEach(course => {
+      const existingCourse = classifiedCourses.find(c => c.code === course.code);
+      if (existingCourse) {
+        // if the course has a higher gpa, replace the existing course
+        if (course.gpa > existingCourse.gpa) {
+          classifiedCourses.splice(classifiedCourses.indexOf(existingCourse), 1);
+          classifiedCourses.push(course);
+        } // if the course has a lower gpa, do nothing
+      } else {
+        classifiedCourses.push(course);
+      }
+    });
+    return classifiedCourses;
+  } 
 
   /**
    * Suggest courses to improve GPA
@@ -284,6 +335,9 @@ export class GPACalculator {
         return false;
       }
       
+      if (course.credits === 0) {
+        return
+      }
       // Include everything else
       return true;
     });
@@ -300,5 +354,72 @@ export class GPACalculator {
     
     // Return the requested number of courses with lowest GPA
     return sortedCourses.slice(0, Math.min(numSuggestions, sortedCourses.length));
+  }
+
+  /**
+   * Calculate GPA after improving certain courses' grades
+   * @param courses Original courses array
+   * @param improvements Object mapping course codes to new numeric scores
+   * @returns New courses array with improved grades and new GPA value
+   */
+  static improveGPA(courses: Course[], improvements: {[key: string]: number}): {
+    improvedCourses: Course[],
+    newGPA: number,
+    oldGPA: number,
+    improvedCourses_detail: Course[]
+  } {
+    if (!courses || courses.length === 0) {
+      return { 
+        improvedCourses: [], 
+        newGPA: 0, 
+        oldGPA: 0,
+        improvedCourses_detail: [] 
+      };
+    }
+    
+    // Clone the original courses array to avoid mutation
+    const improvedCourses = JSON.parse(JSON.stringify(courses)) as Course[];
+    const improvedCourses_detail: Course[] = [];
+    const oldGPA = this.calculateGPA(courses);
+    
+    // Apply improvements
+    improvedCourses.forEach(course => {
+      if (improvements[course.code] !== undefined) {
+        const newScore = improvements[course.code];
+        const oldScore = course.score;
+        const oldGPA = course.gpa;
+        
+        // Update the course with the new score
+        course.score = newScore;
+        
+        // Calculate the new letter grade and GPA point
+        const letterGrade = this.getLetterGrade(newScore);
+        const gpaPoint = this.getGPA(letterGrade);
+        course.letterGrade = letterGrade;
+        course.gpa = gpaPoint;
+        
+        // Clear any special grade flags
+        course.isRtWithPassingGrade = false;
+        course.isRtWithSpecialGrade = false;
+        
+        // Add to improved courses detail list
+        improvedCourses_detail.push({
+          ...course,
+          score: `${oldScore} → ${newScore}`,
+          gpa: gpaPoint,
+          letterGrade: `${oldGPA !== -1 ? oldGPA : 'N/A'} → ${gpaPoint}`
+        });
+      }
+    });
+    
+    // Calculate the new GPA
+    const newGPA = this.calculateGPA(improvedCourses);
+    
+    return {
+      improvedCourses,
+      newGPA,
+      oldGPA,
+      improvedCourses_detail
+    };
   }
 }
