@@ -109,7 +109,11 @@
 // Thi (50%): 8.5	8.5	A		31/12/2024 09:01
 // Số tín chỉ đạt/đăng ký học kỳ: 18/18 - Số TCTL chung: 84	ĐTBHK: 3.7	ĐTBTL chung: 3.5
 
+import { ParseCourseInput } from "./calculator";
 import { RawCourseData } from "./htmlParser";
+
+
+
 interface CourseParse1Line { 
     // example: PE1041	Cầu lông (Học phần 2)	0	--	7.0	B		27/06/2023 15:37
     // code: PE[0-9][0-9][0-9][0-9], head of line[0]
@@ -130,6 +134,165 @@ interface CourseParse2Line {
 
     
 }
-export const extractCourseData = (plainStringContent: string): RawCourseData[] => {
-    return [];
+
+export class PlainStringParser implements ParseCourseInput {
+    extractCourseData(plainStringContent: string): RawCourseData[] {
+        const lines = plainStringContent.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+        const courseData: RawCourseData[] = [];
+        
+        let i = 0;
+    while (i < lines.length) {
+        // Check if line starts with a course code (6 characters at the beginning)
+        const line = lines[i];
+        const codeRegex = /^[A-Z]{2}\d{4}/;
+        
+        if (codeRegex.test(line)) {
+            // Extract course code (first 6 characters)
+            const code = line.substring(0, 6);
+            
+            // Check if it's a 1-line or multi-line course
+            if (i + 1 < lines.length && !codeRegex.test(lines[i + 1]) && !lines[i + 1].startsWith("Số")) {
+                // Multi-line course (2-line or more)
+                let courseText = line;
+                let j = i + 1;
+                
+                // Collect all lines until the next course code or end of lines, except line start with "Số"
+                while (j < lines.length && !codeRegex.test(lines[j]) && !lines[j].startsWith("Số")) {
+                    courseText += "\n" + lines[j];
+                    j++;
+                }
+                
+                // console.log(courseText);
+                // Parse the multi-line course
+                const courseData2Line = parseMultiLineCourse(courseText);
+                if (courseData2Line) {
+                    courseData.push(courseData2Line);
+                }
+                
+                // Update index to the next course
+                i = j;
+            } else {
+                // 1-line course
+                // console.log(line);
+                const courseData1Line = parseSingleLineCourse(line);
+                if (courseData1Line) {
+                    courseData.push(courseData1Line);
+                }
+                i++;
+            }
+        } else {
+            // Skip non-course lines
+            i++;
+        }
+    }
+    
+    return courseData;
+    }
+}
+
+// Helper function to parse a single-line course
+function parseSingleLineCourse(line: string): RawCourseData | null {
+    const parts = line.split(/\s+/);
+    // console.log(parts);
+    // Course code is the first 6 characters
+    const code = parts[0];
+    
+    // If parts length is too short, this isn't a valid course line
+    if (parts.length < 4) return null;
+    
+    // Extract letter grade (usually the second before last element)
+    const letterGrade = parts[parts.length - 3]; // The last element is often empty or date
+    
+    // Extract score (the element before the letter grade)
+    let score: number | string = parts[parts.length - 4];
+    if (!isNaN(parseFloat(score as string))) {
+        score = parseFloat(score as string);
+    }
+    
+    // Extract credits (usually the 3rd part)
+    let credits = 0;
+    if (!isNaN(parseInt(parts[parts.length - 6]))) {
+        credits = parseInt(parts[parts.length - 6]);
+    }
+    
+    // Extract name (everything between code and credits)
+    // This joins all parts from index 1 to parts.length - 6
+    const name = parts.slice(1, parts.length - 6).join(' ');
+    if (score === '--') score = letterGrade;
+    return {
+        code,
+        name,
+        credits,
+        score
+    };
+}
+
+// Helper function to parse a multi-line course
+function parseMultiLineCourse(text: string): RawCourseData | null {
+    const lines = text.split('\n').map(line => line.trim());
+    
+    // Course code is the first 6 characters of the first line
+    const code = lines[0].substring(0, 6);
+    
+    // Extract parts from the first line
+    const firstLineParts = lines[0].trim().split(/\s+/);
+    
+
+    // Tìm vị trí của token đầu tiên chứa dấu ":" hoặc có dạng thành phần điểm
+    let scoreIndex = firstLineParts.findIndex(token =>
+        token.includes("(")
+    );
+    let credits = 0;
+    if (scoreIndex > 0) {
+        while (scoreIndex > 0 && !/\d+$/.test(firstLineParts[scoreIndex - 1])) {
+            scoreIndex--;
+            const maybeCredit = firstLineParts[scoreIndex - 1];
+            if (/^\d+$/.test(maybeCredit)) {
+                credits = parseInt(maybeCredit);
+            }
+        }
+    }
+    
+    
+    // Extract name from the first line (remove code and other parts)
+    const name = firstLineParts.slice(1, scoreIndex - 1).join(' ');
+    
+    // Find the line containing "Thi" for the score
+    let score: number | string = "";
+    const thiLine = lines.find(line => line.includes("Thi"));
+    
+    if (thiLine) {
+        const thiParts = thiLine.split(/\s+/);
+        // Find the last numeric value in the line
+        for (let i = 3; i >= 0; i--) {
+            if (thiParts[i] === "RT") {
+                score = "RT";
+                break;
+            }
+            if (!isNaN(parseFloat(thiParts[i]))) {
+                score = parseFloat(thiParts[i]);
+                break;
+            }
+        }
+    }
+    
+    // If we couldn't find a score in the "Thi" line, try the last line
+    if (!score && lines.length > 1) {
+        const lastLine = lines[lines.length - 1];
+        const lastParts = lastLine.split(/\s+/);
+        // Find the first numeric value in the last line
+        for (let i = 0; i < lastParts.length; i++) {
+            if (!isNaN(parseFloat(lastParts[i]))) {
+                score = parseFloat(lastParts[i]);
+                break;
+            }
+        }
+    }
+    
+    return {
+        code,
+        name,
+        credits,
+        score
+    };
 }
