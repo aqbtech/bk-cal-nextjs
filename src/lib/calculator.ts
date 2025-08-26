@@ -49,7 +49,7 @@ export class GPACalculator {
       return course.gpa !== -1 || course.isRtWithPassingGrade === true;
     });
 
-    console.log("valid course",validCourses);
+    //console.log("valid course",validCourses);
     // if one course has more than two grades, choose the highest grade
     const classifiedCourses: Course[] = [];
     validCourses.forEach(course => {
@@ -64,7 +64,7 @@ export class GPACalculator {
         classifiedCourses.push(course);
       }
     });
-    console.log("classified course",classifiedCourses); 
+    //console.log("classified course",classifiedCourses); 
     validCourses = classifiedCourses;
     if (validCourses.length === 0) {
       return 0;
@@ -199,7 +199,7 @@ export class GPACalculator {
         break;
     
       default:
-        console.error('Invalid format: ' + format);
+        //console.error('Invalid format: ' + format);
         return [];
     }
 
@@ -210,7 +210,7 @@ export class GPACalculator {
     }
 
     const courses = this.filterCourses(rawCourses);
-    console.log(courses);
+    //console.log(courses);
     return courses;
   }
 
