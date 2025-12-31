@@ -1,18 +1,21 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Course } from '@/lib/calculator';
+import { Course, GPACalculator } from '@/lib/calculator';
 
 interface AllCoursesProps {
   courses: Course[];
+  onCourseEdit?: (courseCode: string, newScore: number) => void;
 }
 
 type SortDirection = 'asc' | 'desc';
 type SortColumn = 'code' | 'name' | 'credits' | 'score' | 'letterGrade' | 'gpa';
 
-export default function AllCourses({ courses }: AllCoursesProps) {
+export default function AllCourses({ courses, onCourseEdit }: AllCoursesProps) {
   const [sortColumn, setSortColumn] = useState<SortColumn>('code');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [editingCourse, setEditingCourse] = useState<string | null>(null);
+  const [editScore, setEditScore] = useState<string>('');
 
   // Handle column header click
   const handleSort = (column: SortColumn) => {
@@ -51,6 +54,27 @@ export default function AllCourses({ courses }: AllCoursesProps) {
   const getSortIcon = (column: SortColumn) => {
     if (sortColumn !== column) return "fas fa-sort text-secondary";
     return sortDirection === 'asc' ? "fas fa-sort-up text-primary" : "fas fa-sort-down text-primary";
+  };
+
+  // Start editing a course
+  const startEdit = (courseCode: string, currentScore: number | string) => {
+    setEditingCourse(courseCode);
+    setEditScore(String(currentScore));
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingCourse(null);
+    setEditScore('');
+  };
+
+  // Save edited score
+  const saveEdit = (courseCode: string) => {
+    const newScore = parseFloat(editScore);
+    if (!isNaN(newScore) && newScore >= 0 && newScore <= 10 && onCourseEdit) {
+      onCourseEdit(courseCode, newScore);
+    }
+    cancelEdit();
   };
 
   if (!courses || courses.length === 0) {
@@ -155,32 +179,104 @@ export default function AllCourses({ courses }: AllCoursesProps) {
                 >
                   GPA <i className={getSortIcon('gpa')}></i>
                 </th>
+                {onCourseEdit && <th scope="col">Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {sortedCourses.map((course, index) => (
-                <tr key={`${course.code}-${index}`}>
-                  <td>{index + 1}</td>
-                  <td>{course.code}</td>
-                  <td>{course.name}</td>
-                  <td>{course.credits}</td>
-                  <td>{course.score}</td>
-                  <td>
-                    {course.letterGrade && (
-                      <span className={`badge ${
-                        course.letterGrade === 'A' || course.letterGrade === 'A+' ? 'badge-grade-a' : 
-                        course.letterGrade === 'B+' || course.letterGrade === 'B' ? 'badge-grade-b' : 
-                        course.letterGrade === 'C+' || course.letterGrade === 'C' ? 'badge-grade-c' : 
-                        course.letterGrade === 'D+' || course.letterGrade === 'D' ? 'badge-grade-d' : 
-                        'badge-grade-f'
-                      }`}>
-                        {course.letterGrade}
-                      </span>
+              {sortedCourses.map((course, index) => {
+                const isEditing = editingCourse === course.code;
+                const isSpecialScore = typeof course.score === 'string' && ['MT', 'RT', 'DT'].includes(course.score);
+                
+                return (
+                  <tr key={`${course.code}-${index}`}>
+                    <td>{index + 1}</td>
+                    <td>{course.code}</td>
+                    <td>{course.name}</td>
+                    <td>{course.credits}</td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          className="form-control form-control-sm"
+                          style={{ width: '80px' }}
+                          value={editScore}
+                          onChange={(e) => setEditScore(e.target.value)}
+                          min="0"
+                          max="10"
+                          step="0.1"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') saveEdit(course.code);
+                            if (e.key === 'Escape') cancelEdit();
+                          }}
+                        />
+                      ) : (
+                        course.score
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        <span className="badge bg-secondary">
+                          {editScore && !isNaN(parseFloat(editScore)) 
+                            ? GPACalculator.getLetterGrade(parseFloat(editScore))
+                            : '—'}
+                        </span>
+                      ) : course.letterGrade && (
+                        <span className={`badge ${
+                          course.letterGrade === 'A' || course.letterGrade === 'A+' ? 'badge-grade-a' : 
+                          course.letterGrade === 'B+' || course.letterGrade === 'B' ? 'badge-grade-b' : 
+                          course.letterGrade === 'C+' || course.letterGrade === 'C' ? 'badge-grade-c' : 
+                          course.letterGrade === 'D+' || course.letterGrade === 'D' ? 'badge-grade-d' : 
+                          'badge-grade-f'
+                        }`}>
+                          {course.letterGrade}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {isEditing ? (
+                        editScore && !isNaN(parseFloat(editScore))
+                          ? GPACalculator.getGPA(GPACalculator.getLetterGrade(parseFloat(editScore)))
+                          : '—'
+                      ) : (
+                        course.gpa === -1 ? '—' : course.gpa
+                      )}
+                    </td>
+                    {onCourseEdit && (
+                      <td>
+                        {isEditing ? (
+                          <div className="btn-group btn-group-sm">
+                            <button
+                              className="btn btn-success btn-sm"
+                              onClick={() => saveEdit(course.code)}
+                              title="Save"
+                            >
+                              <i className="fas fa-check"></i>
+                            </button>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={cancelEdit}
+                              title="Cancel"
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </div>
+                        ) : (
+                          !isSpecialScore && (
+                            <button
+                              className="btn btn-outline-primary btn-sm"
+                              onClick={() => startEdit(course.code, course.score)}
+                              title="Edit score"
+                            >
+                              <i className="fas fa-edit"></i>
+                            </button>
+                          )
+                        )}
+                      </td>
                     )}
-                  </td>
-                  <td>{course.gpa === -1 ? '—' : course.gpa}</td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

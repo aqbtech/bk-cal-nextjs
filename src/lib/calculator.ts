@@ -18,6 +18,8 @@ export type Course = {
   isRtWithPassingGrade?: boolean;
   // Flag to track if a course with RT grade also has an MT or DT grade
   isRtWithSpecialGrade?: boolean;
+  // Flag to track if a course with MT grade also has a passing grade
+  isMtWithPassingGrade?: boolean;
 };
 
 export class GPACalculator {
@@ -38,15 +40,15 @@ export class GPACalculator {
     if (!courses || courses.length === 0) {
       return 0;
     }
-   
+
     let validCourses = courses.filter(course => {
       // Exclude RT courses that also have MT or DT grades
       if (course.isRtWithSpecialGrade) {
         return false;
       }
-      
-      // Include courses with normal grades or RT courses with passing grades
-      return course.gpa !== -1 || course.isRtWithPassingGrade === true;
+
+      // Include courses with normal grades, RT courses with passing grades, or MT courses with passing grades
+      return course.gpa !== -1 || course.isRtWithPassingGrade === true || course.isMtWithPassingGrade === true;
     });
 
     //console.log("valid course",validCourses);
@@ -74,8 +76,8 @@ export class GPACalculator {
 
     const totalCredits = validCourses.reduce((sum, course) => sum + course.credits, 0);
     const weightedGPA = validCourses.reduce((sum, course) => {
-      // For RT courses with passing grade, use the actual GPA value, not -1
-      const gpaValue = course.isRtWithPassingGrade && course.gpa === -1 ? 
+      // For RT/MT courses with passing grade, use the actual GPA value, not -1
+      const gpaValue = (course.isRtWithPassingGrade || course.isMtWithPassingGrade) && course.gpa === -1 ?
         this.getGPAFromScore(course.score as number) : course.gpa;
       return sum + (gpaValue * course.credits);
     }, 0);
@@ -95,10 +97,10 @@ export class GPACalculator {
   ): number {
     // Filter out courses with special grades (those with GPA of -1)
     // Except for RT grades that also have a passing numeric score
-    const validCourses = currentCourses.filter(course => 
+    const validCourses = currentCourses.filter(course =>
       course.gpa !== -1 || course.isRtWithPassingGrade === true
     );
-    
+
     const currentGPA = this.calculateGPA(validCourses);
     const currentCredits = validCourses.reduce((sum, course) => sum + course.credits, 0);
     const remainingCredits = totalCreditsCDDT - currentCredits;
@@ -140,7 +142,7 @@ export class GPACalculator {
       }
       score = numScore;
     }
-    
+
     // Normal numeric score handling
     if (score >= 9.5) return 'A+';
     if (score >= 8.5) return 'A';
@@ -188,7 +190,7 @@ export class GPACalculator {
    */
   static parseCourseInput(htmlContent: string, format: string): Course[] {
     // Extract raw course data using htmlParser
-    
+
     let parser;
     switch (format) {
       case 'html':
@@ -197,7 +199,7 @@ export class GPACalculator {
       case 'plainstring':
         parser = new PlainStringParser();
         break;
-    
+
       default:
         //console.error('Invalid format: ' + format);
         return [];
@@ -217,63 +219,75 @@ export class GPACalculator {
   static filterCourses(rawCourses: RawCourseData[]): Course[] {
     // Process raw courses and check for special cases
     const groupedCourses = new Map<string, RawCourseData[]>();
-    
+
     // Group courses by code to check for duplicates (RT with passing grade)
     rawCourses.forEach(course => {
       const existing = groupedCourses.get(course.code) || [];
       existing.push(course);
       groupedCourses.set(course.code, existing);
     });
-    
+
     // Process each group of courses
     const courses: Course[] = [];
     groupedCourses.forEach(rawCoursesGroup => {
       // Check if there's any RT grade in this group
-      const rtCourse = rawCoursesGroup.find(c => 
+      const rtCourse = rawCoursesGroup.find(c =>
         typeof c.score === 'string' && c.score.toUpperCase() === 'RT'
       );
-      
-      // Check if there's any MT or DT grade in this group
-      const mtOrDtCourse = rawCoursesGroup.find(c => 
-        typeof c.score === 'string' && ['MT', 'DT'].includes(c.score.toUpperCase())
+
+      // Check if there's any MT grade in this group
+      const mtCourse = rawCoursesGroup.find(c =>
+        typeof c.score === 'string' && c.score.toUpperCase() === 'MT'
       );
-      
-      // Check if there's any numeric score > F in this group
-      const passingCourse = rawCoursesGroup.find(c => 
+
+      // Check if there's any DT grade in this group
+      const dtCourse = rawCoursesGroup.find(c =>
+        typeof c.score === 'string' && c.score.toUpperCase() === 'DT'
+      );
+
+      // Check if there's any numeric score >= D (passing grade) in this group
+      const passingCourse = rawCoursesGroup.find(c =>
         typeof c.score === 'number' && this.isPassingGrade(c.score)
       );
 
-      
-
-      
       // Process each course
       rawCoursesGroup.forEach(rawCourse => {
         let finalScore = rawCourse.score;
         let isRtWithPassingGrade = false;
         let isRtWithSpecialGrade = false;
-        
-        // New rule: Check if this is RT and there's also an MT or DT for this course
-        if (rtCourse && mtOrDtCourse && 
-            typeof rawCourse.score === 'string' && 
-            rawCourse.score.toUpperCase() === 'RT') {
+        let isMtWithPassingGrade = false;
+
+        // Rule for RT: Check if this is RT and there's also an MT or DT for this course
+        if (rtCourse && (mtCourse || dtCourse) &&
+          typeof rawCourse.score === 'string' &&
+          rawCourse.score.toUpperCase() === 'RT') {
           // Mark as RT with special grade (MT or DT) - will be excluded from suggestions
           isRtWithSpecialGrade = true;
         }
-        
+
         // Handle special case: If both RT and passing grade exist
-        if (rtCourse && passingCourse && 
-            typeof rawCourse.score === 'string' && 
-            rawCourse.score.toUpperCase() === 'RT') {
+        if (rtCourse && passingCourse &&
+          typeof rawCourse.score === 'string' &&
+          rawCourse.score.toUpperCase() === 'RT') {
           // Keep RT as the score but mark this course for special GPA calculation
           isRtWithPassingGrade = true;
           finalScore = passingCourse.score;
         }
 
-        
+        // NEW RULE for MT: If MT + passing score exists, use the passing score
+        if (mtCourse && passingCourse &&
+          typeof rawCourse.score === 'string' &&
+          rawCourse.score.toUpperCase() === 'MT') {
+          // Mark as MT with passing grade - will use passing score for GPA
+          isMtWithPassingGrade = true;
+          finalScore = passingCourse.score;
+        }
+
+
         const letterGrade = this.getLetterGrade(finalScore);
         const gpa = this.getGPA(letterGrade);
 
- 
+
         courses.push({
           code: rawCourse.code,
           name: rawCourse.name,
@@ -282,11 +296,12 @@ export class GPACalculator {
           letterGrade,
           gpa,
           isRtWithPassingGrade,
-          isRtWithSpecialGrade // New flag for RT courses with MT or DT
+          isRtWithSpecialGrade, // Flag for RT courses with MT or DT
+          isMtWithPassingGrade  // Flag for MT courses with passing grade
         });
       });
-      
-      
+
+
     });
     let classifiedCourses: Course[] = [];
     // if one course has more than two grades, choose the highest grade
@@ -303,7 +318,7 @@ export class GPACalculator {
       }
     });
     return classifiedCourses;
-  } 
+  }
 
   /**
    * Suggest courses to improve GPA
@@ -324,34 +339,34 @@ export class GPACalculator {
       if (course.letterGrade === 'MT' || course.letterGrade === 'DT') {
         return false;
       }
-      
+
       // Exclude RT courses that already have a passing grade
       if (course.letterGrade === 'RT' && course.isRtWithPassingGrade) {
         return false;
       }
-      
+
       // New rule: Exclude RT courses that also have MT or DT grades
       if (course.letterGrade === 'RT' && course.isRtWithSpecialGrade) {
         return false;
       }
-      
+
       if (course.credits === 0) {
         return
       }
       // Include everything else
       return true;
     });
-    
+
     // Sort eligible courses by GPA in ascending order (lowest first)
     const sortedCourses = eligibleCourses.sort((a, b) => {
       // Handle special case where one of the GPAs is -1 (special grade)
       if (a.gpa === -1 && b.gpa !== -1) return -1; // RT without passing grade comes first
       if (a.gpa !== -1 && b.gpa === -1) return 1;
-      
+
       // Normal GPA comparison
       return a.gpa - b.gpa;
     });
-    
+
     // Return the requested number of courses with lowest GPA
     return sortedCourses.slice(0, Math.min(numSuggestions, sortedCourses.length));
   }
@@ -362,46 +377,46 @@ export class GPACalculator {
    * @param improvements Object mapping course codes to new numeric scores
    * @returns New courses array with improved grades and new GPA value
    */
-  static improveGPA(courses: Course[], improvements: {[key: string]: number}): {
+  static improveGPA(courses: Course[], improvements: { [key: string]: number }): {
     improvedCourses: Course[],
     newGPA: number,
     oldGPA: number,
     improvedCourses_detail: Course[]
   } {
     if (!courses || courses.length === 0) {
-      return { 
-        improvedCourses: [], 
-        newGPA: 0, 
+      return {
+        improvedCourses: [],
+        newGPA: 0,
         oldGPA: 0,
-        improvedCourses_detail: [] 
+        improvedCourses_detail: []
       };
     }
-    
+
     // Clone the original courses array to avoid mutation
     const improvedCourses = JSON.parse(JSON.stringify(courses)) as Course[];
     const improvedCourses_detail: Course[] = [];
     const oldGPA = this.calculateGPA(courses);
-    
+
     // Apply improvements
     improvedCourses.forEach(course => {
       if (improvements[course.code] !== undefined) {
         const newScore = improvements[course.code];
         const oldScore = course.score;
         const oldGPA = course.gpa;
-        
+
         // Update the course with the new score
         course.score = newScore;
-        
+
         // Calculate the new letter grade and GPA point
         const letterGrade = this.getLetterGrade(newScore);
         const gpaPoint = this.getGPA(letterGrade);
         course.letterGrade = letterGrade;
         course.gpa = gpaPoint;
-        
+
         // Clear any special grade flags
         course.isRtWithPassingGrade = false;
         course.isRtWithSpecialGrade = false;
-        
+
         // Add to improved courses detail list
         improvedCourses_detail.push({
           ...course,
@@ -411,10 +426,10 @@ export class GPACalculator {
         });
       }
     });
-    
+
     // Calculate the new GPA
     const newGPA = this.calculateGPA(improvedCourses);
-    
+
     return {
       improvedCourses,
       newGPA,

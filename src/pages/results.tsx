@@ -8,6 +8,7 @@ import SuggestedCourses from '@/components/SuggestedCourses';
 import AllCourses from '@/components/AllCourses';
 import ImproveCourse from '@/components/ImproveCourse';
 import ImprovedGPAResults from '@/components/ImprovedGPAResults';
+import AddCourse from '@/components/AddCourse';
 import { Course, GPACalculator } from '@/lib/calculator';
 
 export default function Results() {
@@ -16,6 +17,8 @@ export default function Results() {
   const [coursesHtml, setCoursesHtml] = useState<string>('');
   const [totalCreditsCDDT, setTotalCreditsCDDT] = useState<number>(0);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [originalCourses, setOriginalCourses] = useState<Course[]>([]); // Track original courses for restore
+  const [hasChanges, setHasChanges] = useState(false); // Track if user made changes
   const [courseFiltered, setCourseFiltered] = useState<Course[]>([]);
   const [gpa, setGPA] = useState<number | null>(null);
   const [requiredGPA, setRequiredGPA] = useState<number | null>(null);
@@ -49,6 +52,7 @@ export default function Results() {
         // Process the data
         const parsedCourses = GPACalculator.parseCourseInput(coursesData, format);
         setCourses(parsedCourses);
+        setOriginalCourses(JSON.parse(JSON.stringify(parsedCourses))); // Deep copy for restore
         const filteredCourses = GPACalculator.filterCourses(parsedCourses);
         setCourseFiltered(filteredCourses);
         
@@ -113,6 +117,59 @@ export default function Results() {
     setShowImproveModal(!showImproveModal);
   };
 
+  // Handle course score edit from AllCourses component
+  const handleCourseEdit = (courseCode: string, newScore: number) => {
+    const updatedCourses = courses.map(course => {
+      if (course.code === courseCode) {
+        const letterGrade = GPACalculator.getLetterGrade(newScore);
+        const gpa = GPACalculator.getGPA(letterGrade);
+        return {
+          ...course,
+          score: newScore,
+          letterGrade,
+          gpa,
+          isRtWithPassingGrade: false,
+          isRtWithSpecialGrade: false,
+          isMtWithPassingGrade: false
+        };
+      }
+      return course;
+    });
+    
+    setCourses(updatedCourses);
+    const filteredCourses = GPACalculator.filterCourses(updatedCourses);
+    setCourseFiltered(filteredCourses);
+    setGPA(GPACalculator.calculateGPA(updatedCourses));
+    setHasChanges(true);
+    
+    // Reset improved GPA data since courses changed
+    setImprovedGPAData(null);
+  };
+
+  // Handle adding a new planned course
+  const handleAddCourse = (newCourse: Course) => {
+    const updatedCourses = [...courses, newCourse];
+    setCourses(updatedCourses);
+    const filteredCourses = GPACalculator.filterCourses(updatedCourses);
+    setCourseFiltered(filteredCourses);
+    setGPA(GPACalculator.calculateGPA(updatedCourses));
+    setHasChanges(true);
+    
+    // Reset improved GPA data since courses changed
+    setImprovedGPAData(null);
+  };
+
+  // Restore to original courses data
+  const handleRestoreCourses = () => {
+    const restored = JSON.parse(JSON.stringify(originalCourses));
+    setCourses(restored);
+    const filteredCourses = GPACalculator.filterCourses(restored);
+    setCourseFiltered(filteredCourses);
+    setGPA(GPACalculator.calculateGPA(restored));
+    setHasChanges(false);
+    setImprovedGPAData(null);
+  };
+
   if (isLoading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '50vh' }}>
@@ -130,9 +187,20 @@ export default function Results() {
     <div className="space-y-6">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h2 className="h4 mb-0">Your GPA Results</h2>
-        <Link href="/" className="btn btn-outline-primary btn-sm">
-          <i className="fas fa-arrow-left me-2"></i> Enter New Data
-        </Link>
+        <div className="d-flex gap-2">
+          {hasChanges && (
+            <button 
+              onClick={handleRestoreCourses}
+              className="btn btn-outline-warning btn-sm"
+              title="Khôi phục về dữ liệu ban đầu"
+            >
+              <i className="fas fa-undo me-2"></i> Restore
+            </button>
+          )}
+          <Link href="/" className="btn btn-outline-primary btn-sm">
+            <i className="fas fa-arrow-left me-2"></i> Enter New Data
+          </Link>
+        </div>
       </div>
       
       {courses.length > 0 && (
@@ -172,7 +240,9 @@ export default function Results() {
             <SuggestedCourses courses={suggestedCourses} />
           )}
           
-          <AllCourses courses={courses} />
+          <AddCourse onAddCourse={handleAddCourse} />
+          
+          <AllCourses courses={courses} onCourseEdit={handleCourseEdit} />
           
           {/* Improve Course Modal */}
           <ImproveCourse
